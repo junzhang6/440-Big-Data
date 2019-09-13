@@ -37,10 +37,14 @@ summary(Ferry_data)
 temp = Ferry_data[1:5000,]
 X_test = read.csv('test.csv')
 #Fit logistic regression
-Logistic = glm(Delay.Indicator ~ Vessel.Name + Scheduled.Departure + Trip + Day + Month + Day.of.Month + Year + Full.Date, data = Ferry_data, family = binomial)
+Logistic = glm(Delay.Indicator ~ Trip + Day + Month + Day.of.Month , data = Ferry_data, family = binomial)
 summary(Logistic)
 
-predict(Logistic,newdata=X_test)
+prediction = predict(Logistic,newdata=X_test,type = "response")
+range(prediction)
 
+
+result = data.frame('ID' = 1:12376,"Delay.Indicator" = prediction)
+write.csv(result, file = "result.csv",row.names=FALSE)
 
 ```
