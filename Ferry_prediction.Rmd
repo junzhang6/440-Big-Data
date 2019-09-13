@@ -1,0 +1,46 @@
+---
+title: "Module 1"
+author: "chris"
+date: '2019-09-12'
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+```
+
+Load Data
+```{r load data}
+setwd("~/Desktop/stat 440/modules/module 1")
+Ferry_data = read.csv('train.csv')
+```
+
+```{r}
+head(Ferry_data)
+delayed = Ferry_data[Ferry_data[,'Delay.Indicator'] == 1,]
+Rate_by_name = table(delayed$Vessel.Name)/table(Ferry_data$Vessel.Name)
+Rate_by_schedule = table(delayed$Scheduled.Departure)/table(Ferry_data$Scheduled.Departure)
+Rate_by_trip = table(delayed$Trip)/table(Ferry_data$Trip)
+Rate_by_day = table(delayed$Day)/table(Ferry_data$Day)
+Rate_by_month = table(delayed$Month)/table(Ferry_data$Month)
+Rate_by_week = table(delayed$Day.of.Month)/table(Ferry_data$Day.of.Month)
+Rate_by_year = table(delayed$Year)/table(Ferry_data$Year)
+Rate_by_date = table(delayed$Full.Date)/table(Ferry_data$Full.Date)
+
+
+result = data.frame('ID' = 1:12376,"Delay.Indicator" = rep(0,12376))
+write.csv(result, file = "result.csv",row.names=FALSE)
+
+summary(Ferry_data)
+
+temp = Ferry_data[1:5000,]
+X_test = read.csv('test.csv')
+#Fit logistic regression
+Logistic = glm(Delay.Indicator ~ Vessel.Name + Scheduled.Departure + Trip + Day + Month + Day.of.Month + Year + Full.Date, data = Ferry_data, family = binomial)
+summary(Logistic)
+
+predict(Logistic,newdata=X_test)
+
+
+```
