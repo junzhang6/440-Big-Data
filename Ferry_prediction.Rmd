@@ -8,6 +8,8 @@ output: pdf_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(ggplot2)
+library(dplyr)
+library(imputeTS)
 ```
 
 Load Data
@@ -29,22 +31,92 @@ Rate_by_year = table(delayed$Year)/table(Ferry_data$Year)
 Rate_by_date = table(delayed$Full.Date)/table(Ferry_data$Full.Date)
 
 
-result = data.frame('ID' = 1:12376,"Delay.Indicator" = rep(0,12376))
-write.csv(result, file = "result.csv",row.names=FALSE)
-
 summary(Ferry_data)
 
-temp = Ferry_data[1:5000,]
 X_test = read.csv('test.csv')
+
+Train_temp = Ferry_data
+Train_temp = select(Train_temp,-c(Scheduled.Departure,Status,Full.Date)) %>% mutate(Day.of.Month = as.factor(Day.of.Month),
+                                                                                    Year = as.factor(Year))
+
+Test_temp = X_test
+Test_temp = select(Test_temp,-c(Scheduled.Departure,Full.Date)) %>% mutate(Day.of.Month = as.factor(Day.of.Month),
+                                                                                    Year = as.factor(Year))
 #Fit logistic regression
-Logistic = glm(Delay.Indicator ~ Trip + Day + Month + Day.of.Month , data = Ferry_data, family = binomial)
+Logistic = glm(Delay.Indicator ~ Vessel.Name + Trip + Day + Month + Day.of.Month , data = Train_temp, family = binomial)
 summary(Logistic)
 
-prediction = predict(Logistic,newdata=X_test,type = "response")
+prediction = predict(Logistic,newdata=Test_temp,type = "response")
 range(prediction)
-
 
 result = data.frame('ID' = 1:12376,"Delay.Indicator" = prediction)
 write.csv(result, file = "result.csv",row.names=FALSE)
 
+```
+
+
+merge dataset
+
+```{r merge}
+ferry = Ferry_data
+Datetime = paste(ferry$Full.Date,ferry$Scheduled.Departure,sep = ' ')
+ferry$p.datetime = as.POSIXct(Datetime, format = '%d %B %Y %I:%M %p')
+
+test = X_test
+Datetime2 = paste(test$Full.Date,test$Scheduled.Departure,sep = ' ')
+test$p.datetime = as.POSIXct(Datetime2, format = '%d %B %Y %I:%M %p')
+
+traffic = read.csv('traffic.csv')
+Datetime3 = paste(traffic$Day,traffic$Month,traffic$Year,traffic$Hour,traffic$Minute,sep = ' ')
+traffic$p.datetime = as.POSIXct(Datetime3, format = '%d %m %Y %H %M')
+traffic$Second = NULL
+#delete duplicate rows
+traffic = distinct(traffic, p.datetime, .keep_all = TRUE)
+
+
+
+vancouver = read.csv('vancouver.csv')
+vancouver$p.datetime = as.POSIXct(vancouver$Date.Time,format = '%Y-%m-%d %H:%M:%S')
+
+victoria = read.csv('victoria.csv')
+victoria = victoria
+victoria$p.datetime = as.POSIXct(victoria$Date.Time,format = '%Y-%m-%d %H:%M:%S')
+
+#merge for training data (dropping columns,rename,and fill in NAs)
+Temp1 = left_join(ferry,traffic,by = "p.datetime") %>%
+  select(-c(Day.y,Month.y,Year.y,Hour,Minute,Scheduled.Departure,Status,Full.Date,Trip.Duration)) %>% 
+  rename(Day = Day.x, Month = Month.x, Year = Year.x)
+
+Merged_train = left_join(Temp1, vancouver,by="p.datetime") %>% select(-c(Day.y,Month.y,Year.y,Hour,Humidex.in.Celsius,Date.Time,Time))   %>% rename(Day = Day.x, Month = Month.x, Year = Year.x, Dew.Point.Temperature.in.Celsius.V = Dew.Point.Temperature.in.Celsius,
+           Temperature.in.Celsius.V = Temperature.in.Celsius, Relative.Humidity.in.Percent.V = Relative.Humidity.in.Percent) %>%
+  na_ma(k=1)
+
+#merge for testing data (dropping columns,rename,and fill in NAs)
+Temp2 = left_join(test,traffic,by = "p.datetime") %>%
+  select(-c(Day.y,Month.y,Year.y,Hour,Minute,Scheduled.Departure,Full.Date)) %>% 
+  rename(Day = Day.x, Month = Month.x, Year = Year.x)
+
+Merged_test = left_join(Temp2, vancouver,by="p.datetime") %>%
+  select(-c(ID,Day.y,Month.y,Year.y,Hour,Humidex.in.Celsius,Date.Time,Time))   %>% 
+  rename(Day = Day.x, Month = Month.x, Year = Year.x, Dew.Point.Temperature.in.Celsius.V = Dew.Point.Temperature.in.Celsius,
+         Temperature.in.Celsius.V = Temperature.in.Celsius, Relative.Humidity.in.Percent.V = Relative.Humidity.in.Percent) %>%
+  na_ma(k=1)
+
+
+################################################## glm ########################################################
+
+Logistic = glm(Delay.Indicator ~ Vessel.Name + Trip + Day + Month + Day.of.Month + Year + Traffic.Ordinal + Temperature.in.Celsius.V 
+               + Dew.Point.Temperature.in.Celsius.V + Relative.Humidity.in.Percent.V , data = Merged_train, 
+               family = binomial)
+
+prediction = predict(Logistic,newdata = Merged_test,type = "response")
+range(prediction)
+
+result = data.frame('ID' = 1:12376,"Delay.Indicator" = prediction)
+write.csv(result, file = "result.csv",row.names=FALSE)
+
+
+
+#Temp3 = inner_join(Temp2, victoria, by = "p.datetime") 
+#head(Temp3) %>% select(-c(Day.y,Month.y,Year.y,Hour,Time,Date.Time))
 ```
